@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  # 1. HİZMET: PostgreSQL Veritabanı
+  postgres-db:
+    image: postgres:15 # PostgreSQL'in 15. sürümünü indirir (güncel ve stabil)
+    container_name: benim_postgres_containerim
+    environment:
+      - POSTGRES_DB=backend_gorev_db # Senin properties dosyanla AYNI olmalı
+      - POSTGRES_USER=postgres # Senin properties dosyanla AYNI olmalı
+      - POSTGRES_PASSWORD=postgres # Senin properties dosyanla AYNI olmalı
+    ports:
+      - "5432:5432" # Dışarıdan veritabanına erişmek istersen diye (Opsiyonel)
+    volumes:
+      - pg_data:/var/lib/postgresql/data # Veriler kaybolmasın diye hacim (volume) tanımladık
+
+  # 2. HİZMET: Senin Spring Boot Uygulaman
+  app:
+    build: . # Dockerfile'ı olduğu dizini (burası) kullan
+    container_name: benim_backend_uygulamam
+    ports:
+      - "9090:9090" # Senin uygulamanın portu
+    depends_on:
+      - postgres-db # Veritabanı ayağa kalkmadan uygulama kalkmasın
+    environment:
+      # DİKKAT: Veritabanı adresi olarak servisin adını (postgres-db) veriyoruz!
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/backend_gorev_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+
+# Veritabanı dosyalarını saklamak için alan
+volumes:
+  pg_data:
