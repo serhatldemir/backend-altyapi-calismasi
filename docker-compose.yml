@@ -3,31 +3,40 @@ version: "3.8"
 services:
   # 1. HİZMET: PostgreSQL Veritabanı
   postgres-db:
-    image: postgres:15 # PostgreSQL'in 15. sürümünü indirir (güncel ve stabil)
+    image: postgres:15
     container_name: benim_postgres_containerim
     environment:
-      - POSTGRES_DB=backend_gorev_db # Senin properties dosyanla AYNI olmalı
-      - POSTGRES_USER=postgres # Senin properties dosyanla AYNI olmalı
-      - POSTGRES_PASSWORD=postgres # Senin properties dosyanla AYNI olmalı
+      - POSTGRES_DB=backend_gorev_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     ports:
-      - "5432:5432" # Dışarıdan veritabanına erişmek istersen diye (Opsiyonel)
+      - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data # Veriler kaybolmasın diye hacim (volume) tanımladık
+      - pg_data:/var/lib/postgresql/data
 
-  # 2. HİZMET: Senin Spring Boot Uygulaman
+  # 2. HİZMET: Redis (YENİ EKLENDİ)
+  redis-db:
+    image: redis:alpine # Hafif ve hızlı bir Redis sürümü
+    container_name: benim_redis_containerim
+    ports:
+      - "6379:6379" # Redis'in standart portu
+
+  # 3. HİZMET: Senin Spring Boot Uygulaman
   app:
-    build: . # Dockerfile'ı olduğu dizini (burası) kullan
+    build: .
     container_name: benim_backend_uygulamam
     ports:
-      - "9090:9090" # Senin uygulamanın portu
+      - "9090:9090"
     depends_on:
-      - postgres-db # Veritabanı ayağa kalkmadan uygulama kalkmasın
+      - postgres-db
+      - redis-db # Uygulama, Redis açılmadan başlamasın
     environment:
-      # DİKKAT: Veritabanı adresi olarak servisin adını (postgres-db) veriyoruz!
+      # --- PostgreSQL Bağlantısı ---
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/backend_gorev_db
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
-
-# Veritabanı dosyalarını saklamak için alan
+      # --- Redis Bağlantısı (YENİ) ---
+      - SPRING_DATA_REDIS_HOST=redis-db # Yukarıdaki servis ismini yazdık
+      - SPRING_DATA_REDIS_PORT=6379
 volumes:
   pg_data:
