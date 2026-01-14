@@ -16,5 +16,5 @@ public class UserDTO implements Serializable {
 
     private String surname; // <--- İŞTE BU EKSİKTİ, BUNU EKLEDİK
     //
-    private String email;
+
 }

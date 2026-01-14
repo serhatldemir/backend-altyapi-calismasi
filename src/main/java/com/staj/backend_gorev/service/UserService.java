@@ -22,21 +22,22 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
 
-    // 1. LİSTELE (Cacheable)
-    // Bu metod çalıştığında sonucu "allUsers" adıyla Redis'e kaydeder.
-    // İkinci kez çağrıldığında metoda girmez, direkt Redis'ten verir.
+    /**
+     * 1. LİSTELE (Cacheable)
+     * "allUsers" cache'ini kullanır. Veri eklendiğinde/silindiğinde temizlenir.
+     */
     @Cacheable(value = "allUsers")
     public List<UserDTO> getAllUsers() {
-        // Konsola yazdıralım ki Redis'ten mi DB'den mi geldiğini anlayalım
-        System.out.println("--> Veritabanından Kullanıcılar Çekiliyor...");
-
+        System.out.println("--> Veritabanından Tüm Kullanıcılar Çekiliyor...");
         return userRepository.findAll().stream()
                 .map(userMapper::toDTO)
                 .collect(Collectors.toList());
     }
 
-    // 2. EKLE (CacheEvict)
-    // Yeni veri eklenince "allUsers" listesi artık bayatladı. Onu siliyoruz.
+    /**
+     * 2. EKLE (CacheEvict)
+     * Yeni kullanıcı eklendiğinde genel listeyi (allUsers) temizler.
+     */
     @CacheEvict(value = "allUsers", allEntries = true)
     public UserDTO createUser(UserDTO userDTO) {
         User user = userMapper.toEntity(userDTO);
@@ -44,9 +45,11 @@ public class UserService {
         return userMapper.toDTO(savedUser);
     }
 
-    // 3. BUL (Cacheable)
-    // Her bir ID için ayrı kayıt tutar. Örn: user::1, user::2 gibi.
-    @Cacheable(value = "user", key = "#id")
+    /**
+     * 3. BUL (Cacheable)
+     * unless = "#result == null" -> Eğer sonuç null ise cache'e yazma.
+     */
+    @Cacheable(value = "user", key = "#id", unless = "#result == null")
     public UserDTO getUserById(Long id) {
         System.out.println("--> Veritabanından ID ile Kullanıcı Çekiliyor: " + id);
 
@@ -55,12 +58,13 @@ public class UserService {
                 .orElse(null);
     }
 
-    // 4. GÜNCELLE (CacheEvict)
-    // Güncelleme olunca hem o kişinin özel cache'ini (user::1)
-    // hem de genel listeyi (allUsers) silmemiz lazım ki güncel veri görünsün.
+    /**
+     * 4. GÜNCELLE (Caching/CacheEvict)
+     * Hem tekil cache'i (user::id) hem de genel listeyi (allUsers) geçersiz kılar.
+     */
     @Caching(evict = {
-            @CacheEvict(value = "user", key = "#id"), // Tekil cache'i sil
-            @CacheEvict(value = "allUsers", allEntries = true) // Listeyi sil
+            @CacheEvict(value = "user", key = "#id"),
+            @CacheEvict(value = "allUsers", allEntries = true)
     })
     public UserDTO updateUser(Long id, UserDTO userDTO) {
         User mevcutUser = userRepository.findById(id).orElse(null);
@@ -73,8 +77,10 @@ public class UserService {
         return null;
     }
 
-    // 5. SİL (CacheEvict)
-    // Silme olunca da hem o kişiyi hem de listeyi temizliyoruz.
+    /**
+     * 5. SİL (Caching/CacheEvict)
+     * Veri silindiğinde ilgili tüm cache kayıtlarını temizler.
+     */
     @Caching(evict = {
             @CacheEvict(value = "user", key = "#id"),
             @CacheEvict(value = "allUsers", allEntries = true)
