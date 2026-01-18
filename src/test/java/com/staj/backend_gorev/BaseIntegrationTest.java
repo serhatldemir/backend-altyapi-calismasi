@@ -6,6 +6,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * Tüm entegrasyon testleri için temel sınıf.
@@ -18,18 +19,22 @@ public abstract class BaseIntegrationTest {
 
         // 1. PostgreSQL Konteyneri
         @Container
-        @ServiceConnection // Spring Boot, jdbc url, username ve password'ü otomatik bağlar.
-        static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
+        @ServiceConnection
+        @SuppressWarnings("resource")
+        static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:15-alpine"));
 
         // 2. Redis Konteyneri
         @Container
-        @ServiceConnection(name = "redis") // 'redis' ismi sayesinde Spring Data Redis ayarları otomatik yapılır.
-        static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        @ServiceConnection(name = "redis")
+        @SuppressWarnings("resource")
+        static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
                         .withExposedPorts(6379);
 
         /*
-         * NOT: @ServiceConnection(name = "redis") kullandığın an Spring Boot,
-         * test sırasında "spring.data.redis.host" ve "port" bilgilerini
-         * bu konteynerin dinamik değerleriyle otomatik eşleştirir.
+         * NOT: @ServiceConnection sayesinde Spring Boot, test sırasında
+         * veritabanı ve redis bağlantı bilgilerini otomatik olarak ayarlar.
+         * 
+         * @SuppressWarnings("resource") ekledik çünkü konteynerlerin kapanma
+         * sürecini JUnit ve Testcontainers yönetiyor, manuel kapatmamıza gerek yok.
          */
 }
