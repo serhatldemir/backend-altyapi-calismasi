@@ -71,18 +71,19 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 UserDTO updatedUser = objectMapper.readValue(updateResponse, UserDTO.class);
                 Assertions.assertEquals("Ahmet Güncel", updatedUser.getName());
 
-                // --- 5. DELETE (SİLME) ---
+                // --- 5. DELETE (SİLME VE DOĞRULAMA) ---
                 mockMvc.perform(delete("/api/users/" + userId))
                                 .andExpect(status().isOk());
 
-                // Silindiğini doğrula
+                // Silindiğini doğrula: Gerçekçi bir senaryoda sildikten sonra 404 (Not Found)
+                // bekleriz.
                 mockMvc.perform(get("/api/users/" + userId))
-                                .andExpect(status().isOk());
+                                .andExpect(status().isNotFound());
         }
 
         @Test
         void testUserCacheFlow() throws Exception {
-                // 1. ADIM: Kullanıcı Oluştur (Bu işlem 'allUsers' cache'ini temizlemeli/evict)
+                // 1. ADIM: Kullanıcı Oluştur
                 UserDTO user = new UserDTO();
                 user.setName("CacheTest");
                 user.setSurname("User");
@@ -95,23 +96,24 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
                 Long id = objectMapper.readValue(response, UserDTO.class).getId();
 
-                // 2. ADIM: Kullanıcıyı Getir (İlk seferde DB'ye gider, log yazdırır)
-                mockMvc.perform(get("/api/users/" + id)).andExpect(status().isOk());
+                // 2. ADIM: Kullanıcıyı Getir (İlk seferde Veritabanına gider)
+                mockMvc.perform(get("/api/users/" + id))
+                                .andExpect(status().isOk());
 
-                // 3. ADIM: Kullanıcıyı TEKRAR Getir (Bu sefer Redis'ten gelmeli!)
-                // Eğer her şey doğruysa, konsolda ikinci kez "Veritabanından Çekiliyor"
-                // yazısını görmemelisin.
-                mockMvc.perform(get("/api/users/" + id)).andExpect(status().isOk());
+                // 3. ADIM: Kullanıcıyı TEKRAR Getir (Bu sefer Redis'ten gelmeli)
+                // Konsol loglarında tekrar SQL sorgusu görmemen gerekir.
+                mockMvc.perform(get("/api/users/" + id))
+                                .andExpect(status().isOk());
 
-                // 4. ADIM: Güncelleme Yap (Cache temizlenmeli)
-                user.setName("UpdatedName");
+                // 4. ADIM: Güncelleme Yap (Cache temizlenmeli - CacheEvict)
+                user.setName("UpdatedCacheName");
                 mockMvc.perform(put("/api/users/" + id)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(user)))
                                 .andExpect(status().isOk());
 
-                // 5. ADIM: Tekrar Getir (Güncellemeden sonra cache temizlendiği için tekrar
-                // DB'ye gitmeli)
-                mockMvc.perform(get("/api/users/" + id)).andExpect(status().isOk());
+                // 5. ADIM: Tekrar Getir (Cache temizlendiği için tekrar Veritabanına gitmeli)
+                mockMvc.perform(get("/api/users/" + id))
+                                .andExpect(status().isOk());
         }
 }

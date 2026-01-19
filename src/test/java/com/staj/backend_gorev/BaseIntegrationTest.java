@@ -18,23 +18,26 @@ import org.testcontainers.utility.DockerImageName;
 public abstract class BaseIntegrationTest {
 
         // 1. PostgreSQL Konteyneri
+        // Yerel veritabanınla (16.4) uyumlu olması için sürümü 16-alpine olarak
+        // güncelledik.
         @Container
         @ServiceConnection
         @SuppressWarnings("resource")
-        static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:15-alpine"));
+        static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
+                        DockerImageName.parse("postgres:16-alpine"));
 
         // 2. Redis Konteyneri
         @Container
         @ServiceConnection(name = "redis")
         @SuppressWarnings("resource")
-        static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+        static GenericContainer<?> redis = new GenericContainer<>(
+                        DockerImageName.parse("redis:7-alpine"))
                         .withExposedPorts(6379);
 
         /*
          * NOT: @ServiceConnection sayesinde Spring Boot, test sırasında
          * veritabanı ve redis bağlantı bilgilerini otomatik olarak ayarlar.
-         * 
-         * @SuppressWarnings("resource") ekledik çünkü konteynerlerin kapanma
-         * sürecini JUnit ve Testcontainers yönetiyor, manuel kapatmamıza gerek yok.
+         * * Bu yapı ile Liquibase otomatik olarak devreye girer ve her test başında
+         * test konteynerı içinde tabloları sıfırdan oluşturur.
          */
 }

@@ -1,0 +1,21 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260119-1
+      author: senin_adin
+      changes:
+        - createTable:
+            tableName: users
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true # Bu Java'daki IDENTITY stratejisi için önemli
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name # Java'daki name alanı ile aynı
+                  type: varchar(255)
+              - column:
+                  name: surname # Java'daki surname alanı ile aynı
+                  type: varchar(255)
