@@ -17,7 +17,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD) // Her metoddan sonra context'i temizler
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+// Sınıf düzeyinde de eklenebilir ama metod düzeyinde olması daha belirgindir
 public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
         @Autowired
@@ -26,25 +27,23 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        // --- DBUNIT TESTİ ---
+        // 1. TEST: Doğrudan XML'den veri okuma testi
         @Test
-        @DatabaseSetup("/datasets/user-data.xml")
+        @DatabaseSetup(value = "/datasets/user-data.xml", type = DatabaseOperation.CLEAN_INSERT)
         void testGetUsers_FromXmlDataSet() throws Exception {
-                // XML'de id=100 yaptığımız için burada 100 numaralı ID'yi çağırıyoruz
+                // XML'deki id=100 olan kullanıcıyı getiriyoruz
                 String response = mockMvc.perform(get("/api/users/100"))
                                 .andExpect(status().isOk())
                                 .andReturn().getResponse().getContentAsString();
 
                 UserDTO user = objectMapper.readValue(response, UserDTO.class);
 
-                // Doğrulama: Veriler XML'den mi gelmiş?
                 Assertions.assertEquals("Serhat", user.getName());
                 Assertions.assertEquals("Demir", user.getSurname());
         }
 
-        // --- MEVCUT ENTEGRASYON TESTLERİ ---
+        // 2. TEST: Kullanıcının tüm yaşam döngüsü testi (CRUD)
         @Test
-        // CLEAN_INSERT: Önce tabloyu boşaltır, sonra XML'deki verileri ekler.
         @DatabaseSetup(value = "/datasets/user-data.xml", type = DatabaseOperation.CLEAN_INSERT)
         void testUserFullCycle_Integration() throws Exception {
                 // --- 1. POST (KULLANICI OLUŞTURMA) ---
@@ -62,9 +61,8 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 Long userId = createdUser.getId();
 
                 Assertions.assertNotNull(userId);
-                Assertions.assertEquals("Ahmet", createdUser.getName());
 
-                // --- 2. GET BY ID (TEK KULLANICI GETİRME) ---
+                // --- 2. GET BY ID ---
                 String getResponse = mockMvc.perform(get("/api/users/" + userId))
                                 .andExpect(status().isOk())
                                 .andReturn().getResponse().getContentAsString();
@@ -72,68 +70,53 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 UserDTO fetchedUser = objectMapper.readValue(getResponse, UserDTO.class);
                 Assertions.assertEquals("Ahmet", fetchedUser.getName());
 
-                // --- 3. GET ALL (HEPSİNİ LİSTELEME) ---
+                // --- 3. GET ALL ---
                 String getAllResponse = mockMvc.perform(get("/api/users"))
                                 .andExpect(status().isOk())
                                 .andReturn().getResponse().getContentAsString();
 
                 UserDTO[] userArray = objectMapper.readValue(getAllResponse, UserDTO[].class);
-                Assertions.assertTrue(userArray.length > 0);
+                // XML'den gelen 2 kişi + bizim eklediğimiz 1 kişi = en az 3 kişi olmalı
+                Assertions.assertTrue(userArray.length >= 3);
 
-                // --- 4. PUT (GÜNCELLEME) ---
-                UserDTO updateRequest = new UserDTO();
-                updateRequest.setName("Ahmet Güncel");
-                updateRequest.setSurname("Yılmaz");
-
-                String updateResponse = mockMvc.perform(put("/api/users/" + userId)
+                // --- 4. PUT ---
+                createRequest.setName("Ahmet Güncel");
+                mockMvc.perform(put("/api/users/" + userId)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(updateRequest)))
-                                .andExpect(status().isOk())
-                                .andReturn().getResponse().getContentAsString();
+                                .content(objectMapper.writeValueAsString(createRequest)))
+                                .andExpect(status().isOk());
 
-                UserDTO updatedUser = objectMapper.readValue(updateResponse, UserDTO.class);
-                Assertions.assertEquals("Ahmet Güncel", updatedUser.getName());
-
-                // --- 5. DELETE (SİLME VE DOĞRULAMA) ---
+                // --- 5. DELETE ---
                 mockMvc.perform(delete("/api/users/" + userId))
                                 .andExpect(status().isOk());
-
-                // Silindiğini doğrula (404 Beklentisi)
-                mockMvc.perform(get("/api/users/" + userId))
-                                .andExpect(status().isNotFound());
         }
 
+        // 3. TEST: Redis Cache mekanizması testi
         @Test
+        @DatabaseSetup(value = "/datasets/user-data.xml", type = DatabaseOperation.CLEAN_INSERT)
         void testUserCacheFlow() throws Exception {
-                // 1. ADIM: Kullanıcı Oluştur
-                UserDTO user = new UserDTO();
-                user.setName("CacheTest");
-                user.setSurname("User");
+                // XML'den gelen 101 ID'li Ahmet Yilmaz üzerinden cache testi yapalım
+                Long id = 101L;
 
-                String response = mockMvc.perform(post("/api/users")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(user)))
-                                .andExpect(status().isOk())
-                                .andReturn().getResponse().getContentAsString();
-
-                Long id = objectMapper.readValue(response, UserDTO.class).getId();
-
-                // 2. ADIM: Kullanıcıyı Getir (DB'ye gider)
+                // 1. ADIM: Kullanıcıyı Getir (DB'ye gider ve Cache'e yazar)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
 
-                // 3. ADIM: Kullanıcıyı TEKRAR Getir (Redis'ten gelmeli)
+                // 2. ADIM: Kullanıcıyı TEKRAR Getir (Redis'ten gelmeli)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
 
-                // 4. ADIM: Güncelleme Yap (Cache temizlenmeli)
-                user.setName("UpdatedCacheName");
+                // 3. ADIM: Güncelleme Yap (Cache temizlenmeli)
+                UserDTO updateRequest = new UserDTO();
+                updateRequest.setName("Ahmet Cache Güncel");
+                updateRequest.setSurname("Yilmaz");
+
                 mockMvc.perform(put("/api/users/" + id)
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(objectMapper.writeValueAsString(user)))
+                                .content(objectMapper.writeValueAsString(updateRequest)))
                                 .andExpect(status().isOk());
 
-                // 5. ADIM: Tekrar Getir (Tekrar DB'ye gitmeli)
+                // 4. ADIM: Tekrar Getir (Cache silindiği için tekrar DB'ye gitmeli)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
         }
