@@ -1,6 +1,8 @@
 package com.staj.backend_gorev.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.springtestdbunit.annotation.DatabaseOperation;
+import com.github.springtestdbunit.annotation.DatabaseSetup;
 import com.staj.backend_gorev.BaseIntegrationTest;
 import com.staj.backend_gorev.dto.UserDTO;
 import org.junit.jupiter.api.Assertions;
@@ -8,12 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD) // Her metoddan sonra context'i temizler
 public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
         @Autowired
@@ -22,7 +26,26 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
         @Autowired
         private ObjectMapper objectMapper;
 
+        // --- DBUNIT TESTİ ---
         @Test
+        @DatabaseSetup("/datasets/user-data.xml")
+        void testGetUsers_FromXmlDataSet() throws Exception {
+                // XML'de id=100 yaptığımız için burada 100 numaralı ID'yi çağırıyoruz
+                String response = mockMvc.perform(get("/api/users/100"))
+                                .andExpect(status().isOk())
+                                .andReturn().getResponse().getContentAsString();
+
+                UserDTO user = objectMapper.readValue(response, UserDTO.class);
+
+                // Doğrulama: Veriler XML'den mi gelmiş?
+                Assertions.assertEquals("Serhat", user.getName());
+                Assertions.assertEquals("Demir", user.getSurname());
+        }
+
+        // --- MEVCUT ENTEGRASYON TESTLERİ ---
+        @Test
+        // CLEAN_INSERT: Önce tabloyu boşaltır, sonra XML'deki verileri ekler.
+        @DatabaseSetup(value = "/datasets/user-data.xml", type = DatabaseOperation.CLEAN_INSERT)
         void testUserFullCycle_Integration() throws Exception {
                 // --- 1. POST (KULLANICI OLUŞTURMA) ---
                 UserDTO createRequest = new UserDTO();
@@ -75,8 +98,7 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 mockMvc.perform(delete("/api/users/" + userId))
                                 .andExpect(status().isOk());
 
-                // Silindiğini doğrula: Gerçekçi bir senaryoda sildikten sonra 404 (Not Found)
-                // bekleriz.
+                // Silindiğini doğrula (404 Beklentisi)
                 mockMvc.perform(get("/api/users/" + userId))
                                 .andExpect(status().isNotFound());
         }
@@ -96,23 +118,22 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
                 Long id = objectMapper.readValue(response, UserDTO.class).getId();
 
-                // 2. ADIM: Kullanıcıyı Getir (İlk seferde Veritabanına gider)
+                // 2. ADIM: Kullanıcıyı Getir (DB'ye gider)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
 
-                // 3. ADIM: Kullanıcıyı TEKRAR Getir (Bu sefer Redis'ten gelmeli)
-                // Konsol loglarında tekrar SQL sorgusu görmemen gerekir.
+                // 3. ADIM: Kullanıcıyı TEKRAR Getir (Redis'ten gelmeli)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
 
-                // 4. ADIM: Güncelleme Yap (Cache temizlenmeli - CacheEvict)
+                // 4. ADIM: Güncelleme Yap (Cache temizlenmeli)
                 user.setName("UpdatedCacheName");
                 mockMvc.perform(put("/api/users/" + id)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(user)))
                                 .andExpect(status().isOk());
 
-                // 5. ADIM: Tekrar Getir (Cache temizlendiği için tekrar Veritabanına gitmeli)
+                // 5. ADIM: Tekrar Getir (Tekrar DB'ye gitmeli)
                 mockMvc.perform(get("/api/users/" + id))
                                 .andExpect(status().isOk());
         }
